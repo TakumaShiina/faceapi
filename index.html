@@ -1,51 +1,85 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WebGL Face Detection</title>
+    <style>
+        body { margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; height: 100vh; background-color: #f0f0f0; }
+        #video, #overlay { position: absolute; }
+        #status { position: fixed; top: 10px; left: 10px; background: rgba(0,0,0,0.5); color: white; padding: 5px; }
+    </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/tensorflow/3.18.0/tf.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1/dist/face-api.js"></script>
+    <script src="face-api.min.js"></script>
 </head>
 <body>
+    <div id="status">Loading models...</div>
     <video id="video" width="720" height="560" autoplay muted></video>
     <canvas id="overlay" width="720" height="560"></canvas>
 
     <script>
-        const video = document.getElementById('video')
-        const canvas = document.getElementById('overlay')
-        const displaySize = { width: 720, height: 560 }
+        const status = document.getElementById('status');
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('overlay');
+        const displaySize = { width: 720, height: 560 };
 
-        Promise.all([
-            faceapi.nets.tinyFaceDetector.loadFromUri('/models'),
-            faceapi.nets.faceLandmark68Net.loadFromUri('/models'),
-            faceapi.nets.faceRecognitionNet.loadFromUri('/models')
-        ]).then(startVideo)
-
-        function startVideo() {
-            navigator.mediaDevices.getUserMedia(
-                { video: {} },
-                stream => video.srcObject = stream,
-                err => console.error(err)
-            )
+        async function loadModels() {
+            try {
+                await faceapi.nets.tinyFaceDetector.loadFromUri('/models');
+                await faceapi.nets.faceLandmark68Net.loadFromUri('/models');
+                await faceapi.nets.faceRecognitionNet.loadFromUri('/models');
+                status.textContent = 'Models loaded successfully. Starting video...';
+                startVideo();
+            } catch (error) {
+                status.textContent = `Error loading models: ${error.message}`;
+                console.error('Error loading models:', error);
+            }
         }
 
-        video.addEventListener('play', () => {
+        function startVideo() {
+            navigator.mediaDevices.getUserMedia({ video: {} })
+                .then(stream => {
+                    video.srcObject = stream;
+                    video.addEventListener('play', onPlay);
+                    status.textContent = 'Video started. Face detection active.';
+                })
+                .catch(err => {
+                    status.textContent = `Error accessing webcam: ${err.message}`;
+                    console.error('Error accessing webcam:', err);
+                });
+        }
+
+        async function onPlay() {
             const context = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
             if (!context) {
+                status.textContent = 'WebGL not supported';
                 console.error('WebGL not supported');
                 return;
             }
 
-            const displaySize = { width: video.width, height: video.height }
-            faceapi.matchDimensions(canvas, displaySize)
+            faceapi.matchDimensions(canvas, displaySize);
 
             setInterval(async () => {
-                const detections = await faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks()
-                const resizedDetections = faceapi.resizeResults(detections, displaySize)
-                canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height)
-                faceapi.draw.drawDetections(canvas, resizedDetections)
-                faceapi.draw.drawFaceLandmarks(canvas, resizedDetections)
-            }, 100)
-        })
+                try {
+                    const detections = await faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks();
+                    const resizedDetections = faceapi.resizeResults(detections, displaySize);
+                    canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+                    faceapi.draw.drawDetections(canvas, resizedDetections);
+                    faceapi.draw.drawFaceLandmarks(canvas, resizedDetections);
+                } catch (error) {
+                    status.textContent = `Error during face detection: ${error.message}`;
+                    console.error('Error during face detection:', error);
+                }
+            }, 100);
+        }
+
+        // Start the process
+        document.addEventListener('DOMContentLoaded', () => {
+            loadModels().catch(error => {
+                status.textContent = `Initialization error: ${error.message}`;
+                console.error('Initialization error:', error);
+            });
+        });
     </script>
 </body>
 </html>
