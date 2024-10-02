@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebGL Face Detection</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tensorflow/3.18.0/tf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/face-api.js/0.22.2/face-api.min.js"></script>
+</head>
+<body>
+    <video id="video" width="720" height="560" autoplay muted></video>
+    <canvas id="overlay" width="720" height="560"></canvas>
+
+    <script>
+        const video = document.getElementById('video')
+        const canvas = document.getElementById('overlay')
+        const displaySize = { width: 720, height: 560 }
+
+        Promise.all([
+            faceapi.nets.tinyFaceDetector.loadFromUri('/models'),
+            faceapi.nets.faceLandmark68Net.loadFromUri('/models'),
+            faceapi.nets.faceRecognitionNet.loadFromUri('/models')
+        ]).then(startVideo)
+
+        function startVideo() {
+            navigator.mediaDevices.getUserMedia(
+                { video: {} },
+                stream => video.srcObject = stream,
+                err => console.error(err)
+            )
+        }
+
+        video.addEventListener('play', () => {
+            const context = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+            if (!context) {
+                console.error('WebGL not supported');
+                return;
+            }
+
+            const displaySize = { width: video.width, height: video.height }
+            faceapi.matchDimensions(canvas, displaySize)
+
+            setInterval(async () => {
+                const detections = await faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks()
+                const resizedDetections = faceapi.resizeResults(detections, displaySize)
+                canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height)
+                faceapi.draw.drawDetections(canvas, resizedDetections)
+                faceapi.draw.drawFaceLandmarks(canvas, resizedDetections)
+            }, 100)
+        })
+    </script>
+</body>
+</html>
